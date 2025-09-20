@@ -1,0 +1,228 @@
+
+```{r setup, include=FALSE }
+
+```
+
+```{r}
+# Clean environment
+rm(list = ls())
+
+# Load libraries
+library(tidyverse)
+library(lubridate)
+library(here)
+```
+
+```{r}
+# Load the data
+# from data_intermediate/tripdata_2024-2025_v1.csv
+tripdata <- read_csv(here("data_intermediate", "tripdata_2024-2025_v1.csv"))
+```
+
+## High level inspection
+
+```{r}
+# Let's see the colnames
+cols = colnames(tripdata)
+cols
+```
+
+
+```{r}
+# Let's preview the first 20 rows
+head(tripdata, 20)
+```
+
+## Distinct values
+
+```{r}
+# Ok, the station names are plain text names, the station IDs notably have different formats, the member_casual field seems to have values of 'member' or 'casual', and that's it. But let's double check
+
+# List out distinct values of member_casual
+distinct_member_casual = tripdata %>%
+  distinct(member_casual) %>%
+  pull(member_casual)
+
+distinct_member_casual
+```
+
+## Station Name / ID Correspondence
+
+
+```{r}
+# Ok so we can confirm that this is just member and casual. Other concerns that could crop up later are the lat long values being off (maybe we'll see some huge outliers). We also want to make sure that station_names are consistent. Although if we just use the IDs, it might be ok. We would want to ensure that the IDs are matching up to the names alright. 
+
+# To verify that the correspondence of station name and station id is 1-1, we can do the following:
+station_start_check = tripdata %>%
+  distinct(start_station_id, start_station_name) %>%
+  group_by(start_station_id) %>%
+  summarize(n = n()) %>%
+  filter(n > 1) %>% 
+  arrange(desc(n))
+
+station_end_check = tripdata %>%
+  distinct(end_station_id, end_station_name) %>%
+  group_by(end_station_id) %>%
+  summarize(n = n()) %>%
+  filter(n > 1) %>% 
+  arrange(desc(n))
+
+station_start_check
+station_end_check
+
+```
+```{r}
+# Ok interesting, so there are 106 instances where there are multiple IDs for different names, let's check them for example
+# start_station_id == CHI01747
+
+tripdata %>%
+  filter(start_station_id == "CHI01747") %>% 
+  distinct(start_station_name)
+```
+
+So we can see above that CHI01747 has 3 different strings associated with it. What about the others (all of which are two). Let's check out ID=13017
+
+```{r}
+tripdata %>%
+  filter(start_station_id == "13017") %>% 
+  distinct(start_station_name)
+```
+
+Hmm, one has an asterisk at the end. Is this a common pattern? Let's see it for the next, ID=13154
+
+```{r}
+tripdata %>%
+  filter(start_station_id == "13154") %>% 
+  distinct(start_station_name)
+```
+Yup, so it happens. Does this asterisk mean something? We ought to consult the data documentation for this, but none was provided for this case study. So if this case study was real, we would contact the data manager to determine the meanings of these asterisks.
+
+
+So we've found instances of IDs that have multiple station names strings. But what about station names that have multiple corresponding IDs? Let's check that out
+
+```{r}
+station_name_start_check = tripdata %>%
+  distinct(start_station_id, start_station_name) %>%
+  group_by(start_station_name) %>%
+  summarize(n = n()) %>%
+  filter(n > 1) %>% 
+  arrange(desc(n))
+
+station_name_end_check = tripdata %>%
+  distinct(end_station_id, end_station_name) %>%
+  group_by(end_station_name) %>%
+  summarize(n = n()) %>%
+  filter(n > 1) %>% 
+  arrange(desc(n))
+
+station_name_start_check
+station_name_end_check
+```
+
+Aha! There are 1,470 instances of station names pertaining to multiple IDs. What do these look like in practice?
+Let's see what it for the case of Burling St & Diversey Pkwy	
+
+```{r}
+tripdata %>%
+  filter(start_station_name == "Burling St & Diversey Pkwy") %>% 
+  distinct(start_station_id, start_station_name)
+```
+So from this glance at the data it appears
+
+- Multiple very different-looking Station IDs can correspond to the same station name
+- Multiple Station Names can correspond to the same station ID (sometimes with an asterisk)
+
+
+If the exact locations of the stations are what's important, perhaps the lat and longitude can be strung together to form a unique identifier. For the time being, I won't touch this anymore. It's just good to note.
+
+## Date and Time Fields
+
+For date and time, we want to verify that they are provided in the correct formats.
+
+```{r}
+# Check the data types of the date and time fields
+str(tripdata)
+```
+We can see here that our timestamps are read as POSIXct objects, which is good. Let's check out the range of dates
+
+```{r}
+tripdata %>%
+  summarize(
+    min_start = min(started_at, na.rm = TRUE),
+    max_start = max(started_at, na.rm = TRUE),
+    min_end = min(ended_at, na.rm = TRUE),
+    max_end = max(ended_at, na.rm = TRUE)
+  )
+```
+
+This checks out with the data files we used.
+
+What if we used na.rm=FALSE? Does every row have a start and end time?
+
+```{r}
+tripdata %>%
+  summarize(
+    min_start = min(started_at, na.rm = FALSE),
+    max_start = max(started_at, na.rm = FALSE),
+    min_end = min(ended_at, na.rm = FALSE),
+    max_end = max(ended_at, na.rm = FALSE)
+  )
+```
+
+Yes it does! So that looks good!
+
+## Lat and Lon
+
+The only immediately visible possible concern with lat and longitude is outliers.
+So let's just go ahead and make some histograms.
+
+```{r}
+ggplot(tripdata, aes(x = start_lat)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Start Station Latitude", x = "Start Station Latitude", y = "Count") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(tripdata, aes(x = start_lng)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Start Station Longitude", x = "Start Station Longitude", y = "Count") +
+  theme_minimal()
+```
+
+For the start station latitudes we see some pretty big clusters but a bit of a spread as well with lots of outliers. The ranges are on the order of around 0.4 degrees, which is about 27 miles. This seems a bit large for a bike share system, but maybe bikes are being used in the areas surrounding the main metro area.
+
+```{r}
+ggplot(tripdata, aes(x = end_lat)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of End Station Latitude", x = "End Station Latitude", y = "Count") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(tripdata, aes(x = end_lng)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of End Station Longitude", x = "End Station Longitude", y = "Count") +
+  theme_minimal()
+```
+
+Ok, the end coordinates seem to be crazy. 250 degree ranges, thousands of miles ... this isn't possible. Let's confirm the ranges of these end coordinates.
+
+```{r}
+tripdata %>%
+  summarize(
+    min_start_lat = min(start_lat, na.rm = TRUE),
+    max_start_lat = max(start_lat, na.rm = TRUE),
+    min_start_lng = min(start_lng, na.rm = TRUE),
+    max_start_lng = max(start_lng, na.rm = TRUE),
+    min_end_lat = min(end_lat, na.rm = TRUE),
+    max_end_lat = max(end_lat, na.rm = TRUE),
+    min_end_lng = min(end_lng, na.rm = TRUE),
+    max_end_lng = max(end_lng, na.rm = TRUE)
+  )
+
+```
+So this seems like an issue. Perhaps there some bug in the process of recording the end coordinates? 
+Whoever conducts more in-depth analysis using these coordinate data should determine the reasons for these unusual values andn take them into account.
+
+
