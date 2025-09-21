@@ -5,7 +5,7 @@
 .DS_Store
 scripts_and_notebooks/.ipynb_checkpoints
 venv/
-data_raw/
+data_raw/*
 data_intermediate/*
 
 # Make exception for these two files in data_intermediate/
@@ -13,3 +13,6 @@ data_intermediate/*
 # without needing to manually download all the data themselves.
 !data_intermediate/tripdata_2024-2025_v1_downsampled-100k.csv
 !data_intermediate/tripdata_2024-2025_v1_downsampled-100k_calc-fields.csv
+
+# Except README.md files anywhere
+!**/README.md
