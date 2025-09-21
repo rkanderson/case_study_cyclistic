@@ -1,0 +1,271 @@
+
+# Explore Trip Data
+
+```{r setup, include=FALSE}
+```
+
+```{r}
+# Clean environment
+rm(list = ls())
+```
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(lubridate)
+library(here)
+```
+
+```{r}
+# load the data
+# from data_intermediate/tripdata_2024-2025_v1.csv
+# tripdata <- read_csv(here("data_intermediate", "tripdata_2024-2025_v1.csv"))
+```
+
+
+
+## Quick Check: Casual vs Member counts
+
+What does the breakdown of records look like among these two groups in terms of
+sheer counts? If we downsample, will we need to be concerned about making sure we oversample one group?
+
+```{r}
+# tripdata %>%
+#   group_by(member_casual) %>%
+#   summarize(count = n(), percent = n() / nrow(tripdata) * 100)
+```
+
+
+Given the ratio is about 2:1 with casuals being the minority, it'll probably be ok to do just do a simple downsample.
+
+
+## Downsampling
+
+Let's randomly sample 100k records, that should be more than enough.
+
+```{r}
+# set.seed(123) # for reproducibility
+# tripdata_sampled <- tripdata %>%
+#   slice_sample(n = 100000)
+# 
+# # Save the downsampled data
+# # data_intermediate/tripdata_2024-2025_v1_downsampled-100k.csv
+# write_csv(tripdata_sampled, here("data_intermediate", "tripdata_2024-2025_v1_downsampled-100k.csv"))
+# 
+# # UPDATE: moved this to a separate script
+
+tripdata_sampled <- read_csv(here("data_intermediate", "tripdata_2024-2025_v1_downsampled-100k_calc-fields.csv"))
+
+# Ensure day_of_week is an ordered factor
+tripdata_sampled <- tripdata_sampled %>%
+  mutate(
+    day_of_week = factor(
+      day_of_week,
+      levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"),
+      ordered = TRUE
+    )
+  )
+```
+
+## Calculated Fields
+
+What's immediately available and interesting is ride length and day of the week.
+
+```{r}
+# tripdata_sampled <- tripdata_sampled %>%
+#   mutate(ride_length = as.numeric(difftime(ended_at, started_at, units = "mins")),
+#          day_of_week = wday(started_at, label = TRUE, abbr = FALSE))
+
+# Ported to separate script
+```
+
+
+Let's save this
+```{r}
+# Save the downsampled data with calculated fields
+# data_intermediate/tripdata_2024-2025_v1_downsampled-100k_calc-fields.csv
+# write_csv(tripdata_sampled, here("data_intermediate", "tripdata_2024-2025_v1_downsampled-100k_calc-fields.csv"))
+```
+
+
+## Visualizing Ride Length
+
+```{r}
+# Let's go ahead and make a histogram of ride length and facet_wrap for
+# member_casual.
+
+ggplot(tripdata_sampled, aes(x = ride_length, fill = member_casual)) +
+  geom_histogram(binwidth = 5, alpha = 0.7, position = "identity") +
+  coord_cartesian(xlim = c(0, 120)) +  # zoom without dropping data
+  labs(title = "Distribution of Ride Lengths by Member Type",
+       x = "Ride Length (minutes)",
+       y = "Count") +
+  theme_minimal() +
+  facet_wrap(~ member_casual)
+
+```
+
+Both distributions have a right skew, the member plot of course has a higher peak because
+there's more data for the members.
+
+Experiment idea: from our subsample set, we can draw another random sample of 100k records each with replacement, and get equally sized datasets to compare.
+
+```{r}
+# SUBSAMPLE NUMBER
+N_SUBSAMPLE <- 100000
+
+set.seed(456) # for reproducibility
+tripdata_casual <- tripdata_sampled %>%
+  filter(member_casual == "casual") %>%
+  slice_sample(n = N_SUBSAMPLE, replace = TRUE)
+
+tripdata_member <- tripdata_sampled %>%
+  filter(member_casual == "member") %>%
+  slice_sample(n = N_SUBSAMPLE, replace = TRUE)
+
+# Combine the two datasets
+tripdata_equal_sample <- bind_rows(tripdata_casual, tripdata_member)
+```
+
+```{r ride lengths hist}
+# Plot the equal sample
+ggplot(tripdata_equal_sample, aes(x = ride_length, fill = member_casual)) +
+  geom_histogram(binwidth = 5, alpha = 0.7, position = "identity") +
+  coord_cartesian(xlim = c(0, 120)) +  # zoom without dropping data
+  labs(title = "Distribution of Ride Lengths by Member Type (Equal Sample Size)",
+       x = "Ride Length (minutes)",
+       y = "Count") +
+  theme_minimal() +
+  facet_wrap(~ member_casual)
+```
+
+Ok we can already start to see some neat insights here.
+
+The 15-20 minute bracket is where we first start to see a little more casual rides take place. Not by much, but it's there. Before that bracket, more of the trips in the dataset are from members.
+
+Let's also see the probability density functions for the two distributions.
+
+```{r ride lengths density}
+# use geom_density
+ggplot(tripdata_equal_sample, aes(x = ride_length, color = member_casual)) +
+  geom_density(size = 1) +
+  coord_cartesian(xlim = c(0, 180)) +  # zoom without dropping data
+  labs(title = "Density of Ride Lengths by Member Type (Equal 10k Sample Size)",
+       x = "Ride Length (minutes)",
+       y = "Density") +
+  theme_minimal()
+```
+
+## Comparing the Day of the Week Traveled
+
+To compare patterns in the day of the week traveled, let's make a bar chart
+using our equal bootstrapped sample (tripdata_equal_sample)
+
+```{r}
+ggplot(tripdata_equal_sample, aes(x = day_of_week, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Rides by Day of Week and Member Type (Equal 10k Sample Size)",
+       x = "Day of the Week",
+       y = "Number of Rides") +
+  theme_minimal()
+```
+
+Interesting here, when we take a proportional view, we actually see that casual riders already begin to exceed members on Fridays. By sheer numbers alone, they are nowhere near the number of member rides. But by proportion of the total number of rides in that category, they are more.
+
+```{r ride count bar chart}
+ggplot(tripdata_sampled, aes(x = day_of_week, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Rides by Day of Week and Member Type (100k subsample, no equalization)",
+       x = "Day of the Week",
+       y = "Number of Rides") +
+  theme_minimal()
+```
+
+When we look at our more raw subsample, we see more of a sinusoidal pattern in the rides that occur.
+
+From the brief: "Cyclistic users are more likely to ride for leisure, but about 30% use the bikes to commute to work each day."
+
+So it seems then that the casual rider is more likely to ride on weekends. 
+
+So some thoughts to begin thinking about how to get more members --
+- Get more people to use the bike service to commute to work (boost the core segment)
+- Convince people to bike more for leisure regularly -- using those bikes (increasing growth in the periphery segment)
+
+
+Let's get summary statistics for the ride lengths by memeber type.
+
+```{r ride lengths summary stats}
+tripdata_equal_sample %>%
+  group_by(member_casual) %>%
+  summarize(
+    mean_ride_length = mean(ride_length, na.rm = TRUE),
+    median_ride_length = median(ride_length, na.rm = TRUE),
+    max_ride_length = max(ride_length, na.rm = TRUE),
+    min_ride_length = min(ride_length, na.rm = TRUE),
+    sd_ride_length = sd(ride_length, na.rm = TRUE)
+  )
+
+```
+
+Something noteworthy is that the standard deviation for members is far less, by a little over a factor of 3. Meanwhile, the mean ride length is about 12 minutes for members, while it's about 24 minutes for casuals. There are many many outliers (as seen in the boxplot below), and we can see that the medians are much closer.
+
+```{r boxplot ride lengths}
+ggplot(tripdata_equal_sample, aes(x = member_casual, y = ride_length, fill = member_casual)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0, 120)) +  # zoom without dropping data
+  labs(title = "Boxplot of Ride Lengths by Member Type (Equal 10k Sample Size)",
+       x = "Member Type",
+       y = "Ride Length (minutes)") +
+  theme_minimal()
+```
+
+Let's also visualize the ride lengths with respect to weekday.
+
+```{r}
+# Let's make a bar chart, with weekday on the x axis and average ride time for each category
+# on the y axis
+
+ggplot(tripdata_equal_sample, aes(x = day_of_week, y = ride_length, fill = member_casual)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Average Ride Length by Day of Week and Member Type (Equal 10k Sample Size)",
+       x = "Day of the Week",
+       y = "Average Ride Length (minutes)") +
+  theme_minimal()
+
+```
+
+This graph here tells an interesting story -- the casual average ride length generally decreases in the middle of the week, but has some fluctuation. The peaks are at the weekend, but interestingly Tuesday is the second highest.
+
+Meanwhile, members have significantly lower ride times on average -- around the 10-15 minute mark, keeping consistent throughout the week.
+
+## Business Insights
+
+We can see that the middle 50% of rides for both casual riders and members are similar in length -- relatively short -- 8-15 minutes. However, casual riders have a much wider range of ride lengths, with many far outliers driving up their average ride time.
+
+Members on the other hand, more consistently have shorter ride lengths. We can see that the number of rides purchased increase and peak on Tuesday and Thursday (a slight dip occurs on Wednesday). Casual rides show an opposite pattern. The two resemble sinusoidal functions that are out of sync with each other. This is probably because the primary use case of members is to commute to work across short distances.
+
+If the goal is to increase the number of members, then the goal can be to find ways to get casual riders to convert to members, or to bring on more customers who would become members.
+
+If Cyclistic takes the latter route, they would want to focus on their core market segment: commuters who go short distances to work. 
+
+## Specific Recommendations
+
+- Place bike stations near dense residential areas close to business districts.
+
+- Market speed, cost savings, and reliability for short commutes.
+
+- Partner with employers to offer subsidized memberships or wellness perks.
+
+- Create commuter-focused pricing (monthly passes, unlimited 30-min rides).
+
+- Run promotions during rush hours to build daily habits.
+
+- Offer rewards for consistent weekday commuting ("streak bonuses").
+
+- Provide easy route planning tools in the app.
+
+- Build brand identity around being the “smart, eco-friendly commuter.”
+
+- Host local events (for example bike-to-work days, station activations).
+
+- Use referral bonuses for coworkers and peer networks.
