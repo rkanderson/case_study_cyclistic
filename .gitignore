@@ -3,5 +3,6 @@
 .RData
 .Ruserdata
 .DS_Store
+scripts_and_notebooks/.ipynb_checkpoints
 venv/
 data_intermediate/
