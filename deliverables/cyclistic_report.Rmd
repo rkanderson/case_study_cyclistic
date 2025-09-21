@@ -1,0 +1,199 @@
+---
+title: "Cyclistic Business Report"
+author: "Ryan Anderson"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: false
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: false
+    theme: cosmo
+    highlight: textmate
+fontsize: 11pt
+geometry: margin=1in
+mainfont: "Times New Roman"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r}
+# Clean environment
+rm(list = ls())
+
+# Load libraries
+library(tidyverse)
+library(lubridate)
+library(here)
+```
+
+```{r}
+# Load the downsampled data with calculated fields
+tripdata_sampled <- read_csv(here("data_intermediate", "tripdata_2024-2025_v1_downsampled-100k_calc-fields.csv"))
+
+# Ensure day_of_week is an ordered factor
+tripdata_sampled <- tripdata_sampled %>%
+  mutate(
+    day_of_week = factor(
+      day_of_week,
+      levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"),
+      ordered = TRUE
+    )
+  )
+
+### Form the 2 equal groups
+# SUBSAMPLE NUMBER
+N_SUBSAMPLE <- 100000
+
+set.seed(456) # for reproducibility
+tripdata_casual <- tripdata_sampled %>%
+  filter(member_casual == "casual") %>%
+  slice_sample(n = N_SUBSAMPLE, replace = TRUE)
+
+tripdata_member <- tripdata_sampled %>%
+  filter(member_casual == "member") %>%
+  slice_sample(n = N_SUBSAMPLE, replace = TRUE)
+
+# Combine the two datasets
+tripdata_equal_sample <- bind_rows(tripdata_casual, tripdata_member)
+
+```
+
+
+
+# Cyclistic Business Report: Understanding Member vs. Casual Riders
+
+## Background
+
+Cyclistic, a fictional bike-share company (whose data is conveniently identical to that published by the real-world company Divvy), has identified that annual members are more profitable than casual riders who purchase single rides or day passes. To inform a marketing strategy that converts more casual riders into members, I examined ride data from July 2024 to July 2025.  
+
+Because the dataset included more than 5.5 million rides, I downsampled to a manageable 100,000 rides. Membership rides are more prevalent in the data, outnumbering casual rides by about 2:1. When visualizing count data across groups, this imbalance sometimes made spotting patterns difficult, so I also created two equal groups of 100,000 rides each (members and casuals) using random sampling with replacement (these equalized samples are explicitly indicated in the plot titles when used.)
+
+## Key Findings
+
+### Ride Lengths
+- **Members** typically take short, consistent rides averaging **12 minutes**, with most falling between 8–15 minutes.
+- **Casual riders** take more variable rides, averaging **24 minutes**, but with many long outliers that stretch the distribution.
+- Ride length distributions for both groups have a strong right skew, with the casual rides appearing to have more outliers and skewing the mean higher.
+
+
+```{r ride-lengths-summary-table, message=FALSE}
+library(kableExtra)
+
+tripdata_sampled %>%
+  group_by(member_casual) %>%
+  summarize(
+    Mean = round(mean(ride_length, na.rm = TRUE), 1),
+    Median = round(median(ride_length, na.rm = TRUE), 1),
+    Max = round(max(ride_length, na.rm = TRUE), 1),
+    Min = round(min(ride_length, na.rm = TRUE), 1),
+    SD = round(sd(ride_length, na.rm = TRUE), 1)
+  ) %>%
+  kbl(caption = "Ride Length Summary Statistics (100k Subsample)") %>%
+  kable_classic(full_width = FALSE, html_font = "Times New Roman")
+```
+
+```{r ride lengths hist}
+# Plot the equal sample
+ggplot(tripdata_equal_sample, aes(x = ride_length, fill = member_casual)) +
+  geom_histogram(binwidth = 5, alpha = 1, position = "stack") +
+  coord_cartesian(xlim = c(0, 120)) +  # zoom without dropping data
+  labs(title = "Distribution of Ride Lengths by Member Type (Equal 100k Sample Sizes)",
+       x = "Ride Length (minutes)",
+       y = "Count",
+       fill = "Membership Status") +
+  theme_minimal()
+```
+
+```{r ride lengths density}
+# use geom_density
+ggplot(tripdata_equal_sample, aes(x = ride_length, color = member_casual)) +
+  geom_density(size = 1) +
+  coord_cartesian(xlim = c(0, 180)) +  # zoom without dropping data
+  labs(title = "Density of Ride Lengths (Equal 100k Sample Sizes)",
+       x = "Ride Length (minutes)",
+       y = "Density",
+       color = "Membership Status") +
+  theme_minimal()
+```
+
+
+**Variability**: The **standard deviation of ride times** is over three times higher for casual riders compared to members. Members behave predictably, while casuals have much more diverse patterns.
+
+### Ride Frequency by Day
+- **Members ride more on weekdays**, peaking on **Tuesday and Thursday**, which aligns with commuting patterns.
+- **Casual riders ride more on weekends**, suggesting recreational use. They start to surpass members proportionally on Fridays and carry higher activity into Saturday and Sunday.
+- The two groups show opposite patterns resembling a wave function.
+
+```{r ride count bar chart}
+ggplot(tripdata_sampled, aes(x = day_of_week, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Rides by Day of Week and Member Type (100K Subsample, 2024-25)",
+       x = "Day of the Week",
+       y = "Number of Rides") +
+  theme_minimal()
+```
+
+
+### Ride Length by Day
+- Members remain somewhat consistent across the week, with short rides every day.
+- Casual riders’ mean ride times dip during the middle of the week. This might be due to fewer long leisure rides occurring then.
+
+```{r}
+# Let's make a bar chart, with weekday on the x axis and average ride time for each category
+# on the y axis
+
+ggplot(tripdata_sampled, aes(x = day_of_week, y = ride_length, fill = member_casual)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  labs(title = "Average Ride Length by Day of Week and Member Type",
+       x = "Day of the Week",
+       y = "Average Ride Length (minutes)") +
+  theme_minimal()
+
+```
+
+
+## Business Insights
+
+- Members represent Cyclistic’s **core commuter segment**, focused on reliable, short-distance weekday trips.  
+- Casual riders are more unpredictable, often leisure-driven, and less reliable for long-term profitability.  
+- To grow membership, Cyclistic could focus on two pathways:
+  1. **Convert casual riders** who already enjoy the service into members by either converting them into consistent commuters or motivating them to more regularly use the service for leisure rides.
+  2. **Acquire more commuters** who have not yet used Cyclistic but would benefit from the cost savings and convenience.  
+
+## Recommendations (Expanding Core Segment)
+
+- **Expand commuter access**
+  - Place bike stations near residential areas and major business districts.
+  - Provide easy-to-use route planning tools tailored to commuters.  
+
+- **Highlight commuter value**
+  - Market speed, reliability, and cost savings compared to driving or transit.
+  - Emphasize the eco-friendly and health benefits of cycling to work.  
+
+- **Partner with employers**
+  - Offer subsidized memberships through corporate wellness programs.
+  - Provide flexible commuter-focused plans (e.g., monthly passes or unlimited 30-minute rides).  
+
+- **Promote habit formation**
+  - Launch rush-hour promotions and “streak” rewards for consistent weekday riding.
+  - Use referral programs to encourage coworkers and peer groups to join.  
+
+- **Build brand identity**
+  - Position Cyclistic as the smart, eco-friendly commuter’s choice.
+  - Host local events like bike-to-work days and neighborhood station activations.  
+
+---
+
+## Conclusion
+
+The data confirms that **members are consistent commuters, while casual riders are leisure-focused**. To increase profitability, Cyclistic should double down on its commuting audience by targeting short-distance urban travelers and turning casual users into regular members. By aligning station placement, pricing, and marketing with these insights, Cyclistic can grow its membership base and strengthen long-term revenue.
