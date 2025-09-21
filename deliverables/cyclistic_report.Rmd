@@ -74,9 +74,28 @@ tripdata_equal_sample <- bind_rows(tripdata_casual, tripdata_member)
 
 ## Background
 
-Cyclistic, a fictional bike-share company (whose data is conveniently identical to that published by the real-world company Divvy), has identified that annual members are more profitable than casual riders who purchase single rides or day passes. To inform a marketing strategy that converts more casual riders into members, I examined ride data from July 2024 to July 2025.  
+Cyclistic, a fictional bike-share company (whose data is conveniently identical to that published by the real-world company Divvy), has identified that annual members are more profitable than casual riders who purchase single rides or day passes. To inform a marketing strategy that converts more casual riders into members, I examined ride data from August 2024 to July 2025.  
 
 Because the dataset included more than 5.5 million rides, I downsampled to a manageable 100,000 rides. Membership rides are more prevalent in the data, outnumbering casual rides by about 2:1. When visualizing count data across groups, this imbalance sometimes made spotting patterns difficult, so I also created two equal groups of 100,000 rides each (members and casuals) using random sampling with replacement (these equalized samples are explicitly indicated in the plot titles when used.)
+
+## Source and Methods
+
+
+## Data Source
+The dataset used in this analysis consists of official trip data provided by Cyclistic (derived from the Divvy bike-share program) and obtained from the public Divvy trip data bucket. The data covers the period from July 31, 2024, to July 31, 2025, and includes all recorded rides within that timeframe.  
+
+Before performing any analysis, the dataset was inspected for quality and consistency. A separate quality assessment notebook (`scripts_and_notebooks/2_validate_tripdata.Rmd`) identified some discrepancies in station IDs, station names, and ride coordinates. For the purposes of this study, these spatial inconsistencies were not corrected, and the analysis focused solely on temporal features of the rides.
+
+## Methods
+To facilitate efficient analysis, the full dataset of approximately 5.5 million rides was downsampled to 100,000 randomly selected rides. Because the distribution of member versus casual rides was roughly 2:1, additional bootstrapped samples were created to generate two equally sized datasets for clear comparison between these groups.  
+
+Two new fields were calculated for each ride:
+
+- **Ride duration**: computed as the difference between the ride end time and start time, expressed in minutes.  
+- **Day of week**: extracted from the ride start time to allow comparison of ride patterns across weekdays and weekends.
+
+These processed datasets were then used to generate visualizations and summary statistics, providing the basis for the business insights and recommendations presented in this report.
+
 
 ## Key Findings
 
